@@ -90,14 +90,11 @@ def check_credentials_bigquery(bq_client, user_id, password):
     """
     auth_table_id_str = (
         f"`{st.secrets['bigquery']['project_id']}"
-        f".{st.secrets['bigquery']['config_dataset']}" # 認証用データセット
+        f".{st.secrets['bigquery']['config_dataset']}"
         f".{st.secrets['bigquery']['auth_table']}`"
     )
     
     try:
-        # ★★★ 修正2: 認証クエリ実行前のインフォメーション表示 ★★★
-        st.info("認証クエリ実行中... (BigQueryへの接続とクエリ処理を待機中)")
-        
         # SQLインジェクション対策としてパラメータ化クエリを使用
         query = f"""
             SELECT id 
@@ -113,18 +110,19 @@ def check_credentials_bigquery(bq_client, user_id, password):
             ]
         )
         
-        # クエリ実行 (configデータセットへのSELECT権限が必要です)
+        # クエリ実行
         query_job = bq_client.query(query, job_config=job_config)
-        results = query_job.to_dataframe() # 結果を取得
+        results = query_job.to_dataframe()
         
         # 該当するユーザーがいれば認証成功
         return not results.empty
         
     except Exception as e:
-        # 認証クエリ実行エラーは、権限不足またはテーブル名誤りの可能性が高い
-        st.error(f"認証クエリ実行エラーが発生しました: {e}")
-        st.caption(f"認証を試みたテーブル: {auth_table_id_str}")
+        # エラーメッセージをセッションステートに保存
+        st.session_state['auth_error'] = str(e)
+        st.session_state['auth_table'] = auth_table_id_str
         return False
+
 
 def show_login_form(bq_client):
     """
@@ -138,32 +136,41 @@ def show_login_form(bq_client):
         submitted = st.form_submit_button("ログイン")
 
         if submitted:
-            # 前回のエラーメッセージをクリア
-            if 'error_message' in st.session_state:
-                del st.session_state['error_message']
+            # セッションステートのエラーをクリア
+            if 'auth_error' in st.session_state:
+                del st.session_state['auth_error']
+            if 'auth_table' in st.session_state:
+                del st.session_state['auth_table']
 
             if not user_id or not password:
                 st.error("ユーザーIDとパスワードを入力してください。")
-                return
+                st.stop()
 
             # スピナーで待機状態を示す
             with st.spinner("認証中..."):
                 # BigQueryで認証実行
-                if check_credentials_bigquery(bq_client, user_id, password):
-                    st.session_state['authenticated'] = True
-                    st.session_state['user_id'] = user_id
-                    
-                    # ログイン成功ログをBigQueryに記録
-                    log_login_to_bigquery(bq_client, user_id, 'success')
-                    
-                    st.rerun() # 認証成功したらページを再読み込み
-                else:
-                    # 認証失敗ログをBigQueryに記録 (check_credentials_bigquery内でエラーがst.errorで出た場合もここに来る)
-                    log_login_to_bigquery(bq_client, user_id, 'failed')
-                    # check_credentials_bigquery内でエラーが出ていなければ、認証情報不一致のエラーを出す
-                    if '認証クエリ実行エラーが発生しました' not in st.session_state.get('error_message', ''):
-                        st.error("ユーザーIDまたはパスワードが間違っています。")
-
+                auth_result = check_credentials_bigquery(bq_client, user_id, password)
+                
+            # スピナーの外でエラーチェック
+            if 'auth_error' in st.session_state:
+                st.error(f"認証クエリ実行エラーが発生しました: {st.session_state['auth_error']}")
+                st.caption(f"認証を試みたテーブル: {st.session_state['auth_table']}")
+                log_login_to_bigquery(bq_client, user_id, 'failed')
+                st.stop()
+            
+            if auth_result:
+                st.session_state['authenticated'] = True
+                st.session_state['user_id'] = user_id
+                
+                # ログイン成功ログをBigQueryに記録
+                log_login_to_bigquery(bq_client, user_id, 'success')
+                
+                st.success("ログインに成功しました！")
+                st.rerun()
+            else:
+                # 認証失敗ログをBigQueryに記録
+                log_login_to_bigquery(bq_client, user_id, 'failed')
+                st.error("ユーザーIDまたはパスワードが間違っています。")
 # ----------------------------------------------------------------------
 # メインアプリケーション
 # ----------------------------------------------------------------------
