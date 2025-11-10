@@ -1,6 +1,4 @@
 streamlit
 pandas
 google-cloud-bigquery
-gspread
-google-auth-oauthlib
-google-auth-httplib2
+db-dtypes
