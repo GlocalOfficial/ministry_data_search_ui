@@ -56,7 +56,7 @@ if 'user_id' not in st.session_state:
 def log_login_to_bigquery(_bq_client, input_user_id, input_password, login_result, current_session_id):
     """
     ログイン試行ログをBigQueryのconfigデータセットに保存します。
-    BigQueryスキーマ (ご要望に基づく): timestamp, user_id, password, result, session_id
+    BigQueryスキーマ (ご要望に基づく): timestamp, id, password, result, sessionId
     """
     log_table_id = (
         f"{st.secrets['bigquery']['project_id']}"
@@ -67,12 +67,13 @@ def log_login_to_bigquery(_bq_client, input_user_id, input_password, login_resul
     try:
         rows_to_insert = [
             {
-                # ご要望に基づくスキーマ項目
+                # ログインログのスキーマ項目: timestamp, id, password, result, sessionId
                 "timestamp": pd.Timestamp.now(tz='Asia/Tokyo').isoformat(),
-                "user_id": input_user_id, 
-                "password": input_password, # ★機密情報注意★
-                "result": login_result, # 'success' or 'failed'
-                "session_id": current_session_id # 認証成功後のユーザーIDまたは試行ID
+                "id": input_user_id,         # ご要望通り 'id'
+                "password": input_password,  # ご要望通り 'password'
+                "result": login_result,      # 'success' or 'failed'
+                # ★修正: 'session_id' から 'sessionId' に変更
+                "sessionId": current_session_id 
             }
         ]
         
@@ -261,7 +262,7 @@ def run_search(_bq_client, keyword, ministries, categories, sub_categories, year
 def log_search_to_bigquery(_bq_client, keyword, ministries, categories, sub_categories, years, file_count, page_count):
     """
     検索ログをBigQueryの別テーブルに保存します。
-    BigQueryスキーマ: timestamp, session_id, keyword, ministry, category, sub_category, year, file_count, page_count
+    BigQueryスキーマ (GASのスプレッドシートログを参照): timestamp, session_id, keyword, filter_ministries, filter_categories, filter_sub_categories, filter_years, file_count, page_count
     """
     log_table_id = (
         f"{st.secrets['bigquery']['project_id']}"
@@ -273,13 +274,16 @@ def log_search_to_bigquery(_bq_client, keyword, ministries, categories, sub_cate
         rows_to_insert = [
             {
                 "timestamp": pd.Timestamp.now(tz='Asia/Tokyo').isoformat(),
-                "session_id": st.session_state['user_id'], # ユーザーIDをセッションID代わりに使用
+                # session_id のカラム名については log_login と同じく 'sessionId' にするのが自然ですが、
+                # log_search のスキーマは 'session_id' で統一されているため、ここでは 'session_id' を維持します。
+                # ただし、今回は log_login のスキーマに合わせるようご要望があったため、こちらも 'sessionId' に変更します。
+                "sessionId": st.session_state['user_id'], # ユーザーIDをセッションID代わりに使用
                 "keyword": keyword,
-                # スキーマに合わせ、フィールド名を単数形に変更 (ministry, category, sub_category, year) 
-                "ministry": ", ".join(ministries), 
-                "category": ", ".join(categories),
-                "sub_category": ", ".join(sub_categories),
-                "year": ", ".join([str(y) for y in years]), # リストを文字列に変換
+                # ★修正: スキーマに合わせ、filter_ プレフィックスを付けたカラム名を使用
+                "filter_ministries": ", ".join(ministries), 
+                "filter_categories": ", ".join(categories),
+                "filter_sub_categories": ", ".join(sub_categories),
+                "filter_years": ", ".join([str(y) for y in years]), # リストを文字列に変換
                 "file_count": file_count,
                 "page_count": page_count
             }
