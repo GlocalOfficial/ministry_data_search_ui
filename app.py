@@ -16,7 +16,7 @@ st.set_page_config(
 # ----------------------------------------------------------------------
 TABLE_CONFIGS = {
     "予算": {
-        "dataset": st.secrets["bigquery"]["budget_dataset"],
+        "dataset": st.secrets["bigquery"]["rawdata_dataset"],
         "table": st.secrets["bigquery"]["budget_table"],
         "columns": {
             'file_id': 'ファイルID',
@@ -31,7 +31,7 @@ TABLE_CONFIGS = {
         }
     },
     "各種会議資料": {
-        "dataset": st.secrets["bigquery"]["meeting_dataset"],
+        "dataset": st.secrets["bigquery"]["rawdata_dataset"],
         "table": st.secrets["bigquery"]["meeting_table"],
         "columns": {
             'file_id': 'ファイルID',
