@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 from google.cloud import bigquery
 from google.oauth2 import service_account
-import gspread  # Googleスプレッドシート操作用
 import json
 
 # ----------------------------------------------------------------------
@@ -14,6 +13,26 @@ st.set_page_config(
 )
 
 # ----------------------------------------------------------------------
+# BigQuery 接続
+# (認証とデータ取得の両方で使用)
+# ----------------------------------------------------------------------
+
+@st.cache_resource # クライアントはリソースとしてキャッシュ
+def get_bigquery_client():
+    """
+    StreamlitのsecretsからGCPサービスアカウントキーを取得し、
+    BigQueryクライアントを初期化します。
+    """
+    try:
+        creds_json = st.secrets["gcp_service_account"]
+        creds = service_account.Credentials.from_service_account_info(creds_json)
+        client = bigquery.Client(credentials=creds, project=creds.project_id)
+        return client
+    except Exception as e:
+        st.error(f"BigQueryクライアントの初期化に失敗しました: {e}")
+        st.stop()
+
+# ----------------------------------------------------------------------
 # 認証とセッション管理
 # ----------------------------------------------------------------------
 
@@ -23,60 +42,79 @@ if 'authenticated' not in st.session_state:
 if 'user_id' not in st.session_state:
     st.session_state['user_id'] = ""
 
-def get_gspread_client():
+def log_login_to_bigquery(_bq_client, user_id, status):
     """
-    StreamlitのsecretsからGoogle Service Accountキーを取得し、
-    gspreadクライアントを認証・初期化します。
-    """
-    # st.secretsからサービスアカウント情報を取得
-    creds_json = st.secrets["gcp_service_account"]
-    
-    # gspreadが要求するスコープ
-    scopes = [
-        'https://www.googleapis.com/auth/spreadsheets',
-        'https://www.googleapis.com/auth/drive'
-    ]
-    
-    # 認証情報を作成
-    creds = service_account.Credentials.from_service_account_info(
-        creds_json,
-        scopes=scopes
-    )
-    
-    # gspreadクライアントを認証
-    client = gspread.authorize(creds)
-    return client
-
-def check_credentials(client, user_id, password):
-    """
-    Googleスプレッドシート（認証DB）をチェックします。
-    GASの'validateCredentials'関数のStreamlit版です。
+    ログイン試行ログをBigQueryのconfigデータセットに保存します。
     """
     try:
-        # secretsからスプレッドシートIDを取得
-        auth_sheet_id = st.secrets["google_sheets"]["auth_spreadsheet_id"]
+        # ログテーブルのIDをsecretsから取得 (例: log_login)
+        log_table_id = (
+            f"{st.secrets['bigquery']['project_id']}"
+            f".{st.secrets['bigquery']['config_dataset']}"
+            f".{st.secrets['bigquery']['log_login_table']}"
+        )
         
-        # スプレッドシートを開く
-        sheet = client.open_by_key(auth_sheet_id).worksheet("auth") # シート名を'auth'と仮定
+        rows_to_insert = [
+            {
+                "timestamp": pd.Timestamp.now(tz='Asia/Tokyo').isoformat(),
+                "session_id": user_id, # 試行ユーザーIDを記録
+                "status": status # 'success' or 'failed'
+            }
+        ]
         
-        # 全データを取得（pandas DataFrameとして読み込むと便利）
-        data = pd.DataFrame(sheet.get_all_records())
-        
-        if data.empty:
-            st.error("認証シートが空です。")
-            return False
+        errors = _bq_client.insert_rows_json(log_table_id, rows_to_insert)
+        if errors == []:
+            print(f"ログインログ ({status}) をBigQueryに保存しました。")
+        else:
+            print(f"BigQueryへのログインログ保存に失敗しました: {errors}")
+            
+    except Exception as e:
+        # ログ失敗はアプリの停止を妨げない
+        st.warning(f"ログインログの保存に失敗しました: {e} (テーブル: {log_table_id})")
 
-        # 認証ロジック (GASのロジックを再現)
-        # 'user'と'password'はスプレッドシートのカラム名と仮定
-        user_row = data[(data['id'] == user_id) & (data['pw'] == password)]
+def check_credentials_bigquery(bq_client, user_id, password):
+    """
+    BigQueryの認証テーブルをチェックします。
+    
+    注意: このサンプルでは平文のパスワードを比較しています。
+    本番環境では、セキュリティ向上のため、BigQueryにハッシュ化されたパスワードを保存し、
+    Pythonの 'bcrypt' ライブラリなどでハッシュを比較する方法を強く推奨します。
+    """
+    try:
+        # secretsから認証用データセットとテーブル情報を取得
+        auth_table_id = (
+            f"`{st.secrets['bigquery']['project_id']}"
+            f".{st.secrets['bigquery']['config_dataset']}" # 認証用データセット
+            f".{st.secrets['bigquery']['auth_table']}`"
+        )
         
-        return not user_row.empty
+        # SQLインジェクション対策としてパラメータ化クエリを使用
+        query = f"""
+            SELECT id 
+            FROM {auth_table_id}
+            WHERE id = @user_id AND pw = @password
+            LIMIT 1
+        """
+        
+        job_config = bigquery.QueryJobConfig(
+            query_parameters=[
+                bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
+                bigquery.ScalarQueryParameter("password", "STRING", password),
+            ]
+        )
+        
+        # クエリ実行
+        query_job = bq_client.query(query, job_config=job_config)
+        results = query_job.to_dataframe() # 結果を取得
+        
+        # 該当するユーザーがいれば認証成功
+        return not results.empty
         
     except Exception as e:
-        st.error(f"認証シートへのアクセスエラー: {e}")
+        st.error(f"認証クエリ実行エラー: {e}")
         return False
 
-def show_login_form():
+def show_login_form(bq_client):
     """
     ログインフォームを表示します。
     """
@@ -93,35 +131,21 @@ def show_login_form():
 
             with st.spinner("認証中..."):
                 try:
-                    # gspreadクライアントを取得
-                    gs_client = get_gspread_client()
-                    
-                    # 認証実行
-                    if check_credentials(gs_client, user_id, password):
+                    # BigQueryで認証実行
+                    if check_credentials_bigquery(bq_client, user_id, password):
                         st.session_state['authenticated'] = True
                         st.session_state['user_id'] = user_id
                         
-                        # TODO: ここでログインログをBigQueryに記録 (ステップ5)
+                        # ログイン成功ログをBigQueryに記録 (追加)
+                        log_login_to_bigquery(bq_client, user_id, 'success')
                         
                         st.rerun() # 認証成功したらページを再読み込み
                     else:
+                        # ログイン失敗ログをBigQueryに記録 (追加)
+                        log_login_to_bigquery(bq_client, user_id, 'failed')
                         st.error("ユーザーIDまたはパスワードが間違っています。")
                 except Exception as e:
                     st.error(f"ログイン処理中にエラーが発生しました: {e}")
-
-# ----------------------------------------------------------------------
-# BigQuery 接続
-# ----------------------------------------------------------------------
-
-def get_bigquery_client():
-    """
-    StreamlitのsecretsからGCPサービスアカウントキーを取得し、
-    BigQueryクライアントを初期化します。
-    """
-    creds_json = st.secrets["gcp_service_account"]
-    creds = service_account.Credentials.from_service_account_info(creds_json)
-    client = bigquery.Client(credentials=creds, project=creds.project_id)
-    return client
 
 # ----------------------------------------------------------------------
 # メインアプリケーション
@@ -133,6 +157,7 @@ def load_metadata(_bq_client):
     フィルタ用のメタデータをBigQueryから読み込みます。
     GASの 'getMetadataSummary' のStreamlit版です。
     """
+    # データ検索用のデータセットを参照
     query = f"""
       SELECT 
         ministry,
@@ -155,6 +180,7 @@ def run_search(_bq_client, keyword, ministries, categories, sub_categories, year
     検索クエリを実行します。
     GASの 'getSearchResults' と 'buildWhereClause' のStreamlit版です。
     """
+    # データ検索用のデータセットを参照
     base_query = f"""
         SELECT 
             file_id, title, ministry, fiscal_year_start, category, 
@@ -212,7 +238,12 @@ def log_search_to_bigquery(_bq_client, keyword, ministries, categories, sub_cate
     GASの 'logSearchToSheet' のStreamlit版（BigQuery移行版）です。
     """
     try:
-        log_table_id = f"{st.secrets['bigquery']['project_id']}.{st.secrets['bigquery']['dataset']}.log_search" # 仮のテーブル名
+        # ログ用のデータセットとテーブル情報をsecretsから取得
+        log_table_id = (
+            f"{st.secrets['bigquery']['project_id']}"
+            f".{st.secrets['bigquery']['config_dataset']}" # ログ・設定用データセット
+            f".{st.secrets['bigquery']['log_search_table']}" # secrets.tomlで指定
+        )
         
         rows_to_insert = [
             {
@@ -235,22 +266,15 @@ def log_search_to_bigquery(_bq_client, keyword, ministries, categories, sub_cate
             print(f"BigQueryへのログ保存に失敗しました: {errors}")
             
     except Exception as e:
-        st.warning(f"検索ログの保存に失敗しました: {e}")
+        st.warning(f"検索ログの保存に失敗しました: {e} (ログテーブル: {log_table_id})")
 
 
-def main_app():
+def main_app(bq_client):
     """
     認証後に表示されるメインアプリケーション
     """
     st.title("省庁資料検索ツール（Streamlit版）")
     
-    # BigQueryクライアントを初期化
-    try:
-        bq_client = get_bigquery_client()
-    except Exception as e:
-        st.error(f"BigQueryクライアントの初期化に失敗しました: {e}")
-        st.stop()
-
     # -----------------
     # 1. サイドバー (フィルタ)
     # -----------------
@@ -325,8 +349,11 @@ def main_app():
 # アプリケーションの実行
 # ----------------------------------------------------------------------
 
+# まずBQクライアントを初期化
+bq_client = get_bigquery_client()
+
 # セッションステートをチェックして、認証済みか判断
 if not st.session_state['authenticated']:
-    show_login_form()
+    show_login_form(bq_client)
 else:
-    main_app()
+    main_app(bq_client)
