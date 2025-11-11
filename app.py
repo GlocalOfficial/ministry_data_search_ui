@@ -96,6 +96,8 @@ if 'session_id' not in st.session_state:
     st.session_state['session_id'] = ""
 if 'selected_agencies' not in st.session_state:
     st.session_state['selected_agencies'] = []
+if 'search_results' not in st.session_state:
+    st.session_state['search_results'] = None
 
 # ----------------------------------------------------------------------
 # 認証
@@ -350,7 +352,7 @@ def main_app(bq_client):
     tree_data = load_ministry_tree()
     
     with st.sidebar:
-        st.markdown("省庁:")
+        st.markdown("省庁")
         if tree_data:
             tree_result = st_ant_tree(
                 treeData=tree_data,
@@ -404,6 +406,7 @@ def main_app(bq_client):
     
     if st.sidebar.button("フィルタをリセット", use_container_width=True):
         st.session_state['selected_agencies'] = []
+        st.session_state['search_results'] = None
         st.rerun()
     
     st.sidebar.markdown("")
@@ -413,6 +416,7 @@ def main_app(bq_client):
         st.session_state['user_id'] = ""
         st.session_state['session_id'] = ""
         st.session_state['selected_agencies'] = []
+        st.session_state['search_results'] = None
         st.rerun()
 
     # メインコンテンツ (検索結果をタブで表示)
@@ -443,37 +447,43 @@ def main_app(bq_client):
                     "column_names": column_names
                 }
             
-            tabs = st.tabs(list(TABLE_CONFIGS.keys()))
-            
-            for i, (tab_name, tab) in enumerate(zip(TABLE_CONFIGS.keys(), tabs)):
-                with tab:
-                    results_df = all_results[tab_name]["df"]
-                    column_names = all_results[tab_name]["column_names"]
+            # 検索結果をセッションステートに保存
+            st.session_state['search_results'] = all_results
+    
+    # 検索結果の表示（セッションステートから取得）
+    if st.session_state['search_results'] is not None:
+        all_results = st.session_state['search_results']
+        tabs = st.tabs(list(TABLE_CONFIGS.keys()))
+        
+        for i, (tab_name, tab) in enumerate(zip(TABLE_CONFIGS.keys(), tabs)):
+            with tab:
+                results_df = all_results[tab_name]["df"]
+                column_names = all_results[tab_name]["column_names"]
+                
+                if not results_df.empty:
+                    page_count = len(results_df)
+                    file_id_col = column_names.get('file_id', 'file_id')
+                    file_count = results_df[file_id_col].nunique()
                     
-                    if not results_df.empty:
-                        page_count = len(results_df)
-                        file_id_col = column_names.get('file_id', 'file_id')
-                        file_count = results_df[file_id_col].nunique()
-                        
-                        st.success(f"{file_count}ファイル・{page_count}ページ ヒットしました")
-                        
-                        url_col = column_names.get('source_url')
-                        if url_col:
-                            st.dataframe(
-                                results_df, 
-                                height=2000, 
-                                use_container_width=True,
-                                column_config={
-                                    url_col: st.column_config.LinkColumn(
-                                        url_col,
-                                        display_text="📄リンク"
-                                    )
-                                }
-                            )
-                        else:
-                            st.dataframe(results_df, height=2000, use_container_width=True)
+                    st.success(f"{file_count}ファイル・{page_count}ページ ヒットしました")
+                    
+                    url_col = column_names.get('source_url')
+                    if url_col:
+                        st.dataframe(
+                            results_df, 
+                            height=2000, 
+                            use_container_width=True,
+                            column_config={
+                                url_col: st.column_config.LinkColumn(
+                                    url_col,
+                                    display_text="📄リンク"
+                                )
+                            }
+                        )
                     else:
-                        st.info("該当する結果が見つかりませんでした。")
+                        st.dataframe(results_df, height=2000, use_container_width=True)
+                else:
+                    st.info("該当する結果が見つかりませんでした。")
 
 # ----------------------------------------------------------------------
 # アプリケーションの実行
