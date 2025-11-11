@@ -198,15 +198,16 @@ def extract_agencies_from_tree_result(tree_result):
     if not tree_result:
         return []
     
-    agencies = []
+    # tree_resultが直接リストの場合
+    if isinstance(tree_result, list):
+        return tree_result
     
-    # checkedキーから値を取得
-    if 'checked' in tree_result:
-        checked_items = tree_result['checked']
-        if isinstance(checked_items, list):
-            agencies.extend(checked_items)
+    # tree_resultが辞書の場合（念のため）
+    if isinstance(tree_result, dict):
+        if 'checked' in tree_result:
+            return tree_result['checked'] if isinstance(tree_result['checked'], list) else []
     
-    return agencies
+    return []
 
 # ----------------------------------------------------------------------
 # メインアプリケーション
