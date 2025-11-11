@@ -7,7 +7,7 @@
     "value": "内閣府P",
     "title": "内閣府",
     "children": [
-      {"value": "内閣府", "title": "内閣府(本局)"},
+      {"value": "内閣府", "title": "内閣府"},
       {"value": "宮内庁", "title": "宮内庁"},
       {"value": "公正取引委員会", "title": "公正取引委員会"},
       {"value": "国家公安委員会", "title": "国家公安委員会"},

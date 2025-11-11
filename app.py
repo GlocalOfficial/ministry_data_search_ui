@@ -147,7 +147,7 @@ def show_login_form(bq_client):
     """
     ログインフォームを表示します。
     """
-    st.title("省庁資料検索ツール(PoC版) - ログイン")
+    st.title("省庁資料検索ツール(PoC版_v2) - ログイン")
     
     with st.form("login_form"):
         user_id = st.text_input("ユーザーID")
@@ -189,9 +189,9 @@ def load_ministry_tree():
         st.error(f"エラー: '{file_path.name}' のJSON形式が不正です。")
         return []
 
-def extract_ministries_from_tree_result(tree_result):
+def extract_agencies_from_tree_result(tree_result):
     """
-    st_ant_treeの結果から選択された省庁名のリストを抽出します。
+    st_ant_treeの結果から選択された本局/外局名のリストを抽出します。
     """
     if not tree_result:
         return []
@@ -305,11 +305,11 @@ def log_search_to_bigquery(_bq_client, tab_name, keyword, agencies, categories, 
                 "timestamp": pd.Timestamp.now(tz='Asia/Tokyo').isoformat(),
                 "sessionId": st.session_state['user_id'],
                 "tab_name": tab_name,
-                "keyword": keyword,
-                "filter_agencies": ", ".join(agencies), 
-                "filter_category": ", ".join(categories),
-                "filter_subcategory": ", ".join(sub_categories),
-                "filter_year": ", ".join([str(y) for y in years]),
+                "keyword": keyword if keyword else "",
+                "filter_agencies": ", ".join(agencies) if agencies else "",
+                "filter_category": ", ".join(categories) if categories else "",
+                "filter_subcategory": ", ".join(sub_categories) if sub_categories else "",
+                "filter_year": ", ".join([str(y) for y in years]) if years else "",
                 "file_count": file_count,
                 "page_count": page_count
             }
@@ -323,7 +323,7 @@ def main_app(bq_client):
     """
     認証後に表示されるメインアプリケーション
     """
-    st.title("省庁資料検索ツール(Streamlit版)")
+    st.title("省庁資料検索ツール_v2")
     
     # サイドバー (フィルタ)
     st.sidebar.header("🔽 条件絞り込み")
@@ -333,21 +333,22 @@ def main_app(bq_client):
     # ツリー形式の省庁選択
     tree_data = load_ministry_tree()
     
+    agencies = []  # デフォルト値を設定
     with st.sidebar:
         st.markdown("省庁:")
         if tree_data:
             tree_result = st_ant_tree(
                 treeData=tree_data,
                 treeCheckable=True,
-                allowClear=True
+                allowClear=True,
+                key="agency_tree"  # keyを追加して状態を保持
             )
-            agencies = extract_ministries_from_tree_result(tree_result)
+            agencies = extract_agencies_from_tree_result(tree_result)
             
-            # デバッグ用：選択された省庁を表示
+            # デバッグ用：選択された本局/外局を表示
             if agencies:
                 st.caption(f"選択中: {', '.join(agencies)}")
         else:
-            agencies = []
             st.error("省庁ツリーの読み込みに失敗しました。")
     
     # 全テーブルのメタデータを統合して読み込み
@@ -398,6 +399,9 @@ def main_app(bq_client):
     st.markdown("---")
 
     if search_button:
+        # デバッグ: 検索時のagenciesの値を確認
+        st.sidebar.info(f"検索実行: agencies={agencies}")
+        
         with st.spinner("🔄 検索中..."):
             # 各テーブルから検索結果を取得
             all_results = {}
