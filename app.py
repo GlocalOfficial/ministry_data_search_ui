@@ -328,24 +328,20 @@ def main_app(bq_client):
     keyword = st.sidebar.text_input("キーワード", placeholder="キーワードを入力")
     
     # ツリー形式の省庁選択
+    st.sidebar.markdown("### 省庁:")
     tree_data = load_ministry_tree()
     
-    with st.sidebar:
-        st.markdown("### 省庁:")
-        if tree_data:
-            tree_result = st_ant_tree(
-                treeData=tree_data,
-                treeCheckable=True,
-                allowClear=True
-            )
-            ministries = extract_ministries_from_tree_result(tree_result)
-            
-            # デバッグ用：選択された省庁を表示
-            if ministries:
-                st.caption(f"選択中: {', '.join(ministries)}")
-        else:
-            ministries = []
-            st.error("省庁ツリーの読み込みに失敗しました。")
+    if tree_data:
+        tree_result = st_ant_tree(
+            treeData=tree_data,
+            treeCheckable=True,
+            allowClear=True,
+            key="ministry_tree"
+        )
+        ministries = extract_ministries_from_tree_result(tree_result)
+    else:
+        ministries = []
+        st.sidebar.error("省庁ツリーの読み込みに失敗しました。")
     
     # 全テーブルのメタデータを統合して読み込み
     with st.spinner("フィルタを読み込み中..."):
