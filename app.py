@@ -306,7 +306,7 @@ def run_search(_bq_client, dataset, table, column_names, keyword, agencies, cate
         st.error(f"検索エラー: {e}")
         return pd.DataFrame()
 
-def log_search_to_bigquery(_bq_client, tab_name, keyword, agencies, categories, sub_categories, years, file_count, page_count):
+def log_search_to_bigquery(_bq_client, keyword, agencies, categories, sub_categories, years):
     """
     検索ログをBigQueryに保存します。
     """
@@ -321,14 +321,11 @@ def log_search_to_bigquery(_bq_client, tab_name, keyword, agencies, categories, 
             {
                 "timestamp": pd.Timestamp.now(tz='Asia/Tokyo').isoformat(),
                 "sessionId": st.session_state['session_id'],
-                "tab_name": tab_name,
                 "keyword": keyword if keyword else "",
-                "filter_agencies": ", ".join(agencies) if agencies else "",
+                "filter_ministries": ", ".join(agencies) if agencies else "",
                 "filter_category": ", ".join(categories) if categories else "",
                 "filter_subcategory": ", ".join(sub_categories) if sub_categories else "",
-                "filter_year": ", ".join([str(y) for y in years]) if years else "",
-                "file_count": file_count,
-                "page_count": page_count
+                "filter_year": ", ".join([str(y) for y in years]) if years else ""
             }
         ]
         
@@ -424,6 +421,12 @@ def main_app(bq_client):
     if search_button:
         agencies = st.session_state.get('selected_agencies', [])
         
+        # 検索ログを記録（検索実行時に1回だけ）
+        log_search_to_bigquery(
+            bq_client, keyword, agencies, categories, 
+            sub_categories, years
+        )
+        
         with st.spinner("🔄 検索中..."):
             all_results = {}
             for tab_name, tab_config in TABLE_CONFIGS.items():
@@ -453,11 +456,6 @@ def main_app(bq_client):
                         file_count = results_df[file_id_col].nunique()
                         
                         st.success(f"{file_count}ファイル・{page_count}ページ ヒットしました")
-                        
-                        log_search_to_bigquery(
-                            bq_client, tab_name, keyword, agencies, categories, 
-                            sub_categories, years, file_count, page_count
-                        )
                         
                         url_col = column_names.get('source_url')
                         if url_col:
