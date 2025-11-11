@@ -333,21 +333,16 @@ def main_app(bq_client):
     with st.sidebar:
         st.markdown("### 省庁:")
         if tree_data:
-            # デバッグ用：JSONの先頭5件を表示
-            with st.expander("🔍 デバッグ: JSONデータ確認"):
-                st.json(tree_data[:5])
-            
             tree_result = st_ant_tree(
                 treeData=tree_data,
                 treeCheckable=True,
-                allowClear=True,
-                key="ministry_tree"
+                allowClear=True
             )
             ministries = extract_ministries_from_tree_result(tree_result)
             
             # デバッグ用：選択された省庁を表示
             if ministries:
-                st.info(f"選択中: {', '.join(ministries)}")
+                st.caption(f"選択中: {', '.join(ministries)}")
         else:
             ministries = []
             st.error("省庁ツリーの読み込みに失敗しました。")
