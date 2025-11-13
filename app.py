@@ -219,16 +219,21 @@ def load_council_list(_bq_client):
     """
     BigQueryから会議体リストを読み込み、ツリー形式に変換します。
     """
-    query = f"""
-        SELECT 
-            title,
-            value,
-            ministry
-        FROM `{st.secrets["bigquery"]["project_id"]}.{st.secrets["bigquery"]["rawdata_dataset"]}.{st.secrets["bigquery"]["council_list"]}`
-        ORDER BY ministry, title
-    """
     try:
+        query = f"""
+            SELECT 
+                title,
+                value,
+                ministry
+            FROM `{st.secrets["bigquery"]["project_id"]}.{st.secrets["bigquery"]["rawdata_dataset"]}.{st.secrets["bigquery"]["council_list"]}`
+            ORDER BY ministry, title
+        """
+        
         df = _bq_client.query(query).to_dataframe()
+        
+        if df.empty:
+            st.warning("会議体リストが空です")
+            return []
         
         # ministryごとにグループ化してツリー形式に変換
         tree_data = []
@@ -242,13 +247,15 @@ def load_council_list(_bq_client):
             
             tree_data.append({
                 "title": ministry,
-                "value": ministry,
+                "value": f"{ministry}_parent",  # 親ノードには一意のvalue
                 "children": children
             })
         
         return tree_data
     except Exception as e:
         st.error(f"会議体リストの読み込みエラー: {e}")
+        import traceback
+        st.error(traceback.format_exc())
         return []
 
 @st.cache_data
