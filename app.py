@@ -35,7 +35,7 @@ TABLE_CONFIGS = {
             'content_text': '本文'
         }
     },
-    "各種会議資料": {
+    "会議資料": {
         "dataset": st.secrets["bigquery"]["rawdata_dataset"],
         "table": st.secrets["bigquery"]["council_table"],
         "columns": {
