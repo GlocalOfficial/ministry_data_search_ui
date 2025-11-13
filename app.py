@@ -23,8 +23,8 @@ TABLE_CONFIGS = {
         "dataset": st.secrets["bigquery"]["rawdata_dataset"],
         "table": st.secrets["bigquery"]["budget_table"],
         "columns": {
-            'file_id': 'ファイルID',
-            'title': 'タイトル',
+            # 'file_id': 'ファイルID',
+            'title': '資料名',
             'ministry': '省庁',
             'agency': '本局/外局',
             'fiscal_year_start': '年度',
@@ -39,8 +39,8 @@ TABLE_CONFIGS = {
         "dataset": st.secrets["bigquery"]["rawdata_dataset"],
         "table": st.secrets["bigquery"]["council_table"],
         "columns": {
-            'file_id': 'ファイルID',
-            'title': 'タイトル',
+            # 'file_id': 'ファイルID',
+            'title': '資料名',
             'ministry': '省庁',
             'agency': '本局/外局',
             'council': '会議体名',
