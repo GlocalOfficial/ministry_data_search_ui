@@ -563,7 +563,7 @@ def main_app(bq_client):
             st.session_state['search_results'] = all_results
     
     # タブの作成（常に表示）
-    tabs = st.tabs(["予算", "会議資料", "📖 使い方・収録データ情報"])
+    tabs = st.tabs(["予算", "会議資料", "🔰使用方法・収録データ情報"])
     
     councils = st.session_state.get('selected_councils', [])
     
