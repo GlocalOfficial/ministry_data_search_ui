@@ -24,7 +24,7 @@ TABLE_CONFIGS = {
         "table": st.secrets["bigquery"]["budget_table"],
         "columns": {
             'file_id': 'ファイルID',
-            'title': '資料名',
+            'title': 'タイトル',
             'ministry': '省庁',
             'agency': '本局/外局',
             'fiscal_year_start': '年度',
@@ -40,7 +40,7 @@ TABLE_CONFIGS = {
         "table": st.secrets["bigquery"]["council_table"],
         "columns": {
             'file_id': 'ファイルID',
-            'title': '資料名',
+            'title': 'タイトル',
             'ministry': '省庁',
             'agency': '本局/外局',
             'council': '会議体名',
@@ -551,23 +551,24 @@ def main_app(bq_client):
                 
                 if not results_df.empty:
                     page_count = len(results_df)
-                    file_id_col = column_names.get('file_id', 'file_id')
-                    file_count = results_df[file_id_col].nunique()
+                    # 日本語カラム名を取得
+                    file_id_col_jp = column_names.get('file_id', 'ファイルID')
+                    file_count = results_df[file_id_col_jp].nunique()
                     
                     st.success(f"{file_count}ファイル・{page_count}ページ ヒットしました")
                     
                     # ファイルIDカラムを除外して表示用DataFrameを作成
-                    display_df = results_df.drop(columns=[file_id_col])
+                    display_df = results_df.drop(columns=[file_id_col_jp])
                     
-                    url_col = column_names.get('source_url')
-                    if url_col:
+                    url_col_jp = column_names.get('source_url', 'URL')
+                    if url_col_jp in display_df.columns:
                         st.dataframe(
                             display_df, 
                             height=2000, 
                             use_container_width=True,
                             column_config={
-                                url_col: st.column_config.LinkColumn(
-                                    url_col,
+                                url_col_jp: st.column_config.LinkColumn(
+                                    url_col_jp,
                                     display_text="📄リンク"
                                 )
                             }
