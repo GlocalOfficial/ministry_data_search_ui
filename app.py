@@ -289,6 +289,18 @@ def load_filter_choices():
     
     return choices
 
+@st.cache_data
+def load_manual():
+    """
+    マニュアルファイルを読み込みます。
+    """
+    manual_path = Path(__file__).parent / "docs" / "manual.md"
+    try:
+        with open(manual_path, 'r', encoding='utf-8') as f:
+            return f.read()
+    except FileNotFoundError:
+        return f"マニュアルファイルが見つかりません: {manual_path}\n\ndocs/manual.md を作成してください。"
+
 def extract_agencies_from_tree_result(tree_result):
     """
     st_ant_treeの結果から選択された本局/外局名のリストを抽出します。
@@ -403,29 +415,11 @@ def main_app(bq_client):
     """
     st.title("省庁資料検索ツール (β版_v2)")
     
-    # マニュアル表示用のダイアログ
-    @st.dialog("📖 使い方・収録データ情報", width="large")
-    def show_manual():
-        manual_path = Path(__file__).parent / "docs" / "manual.md"
-        try:
-            with open(manual_path, 'r', encoding='utf-8') as f:
-                st.markdown(f.read())
-        except FileNotFoundError:
-            st.error(f"マニュアルファイルが見つかりません: {manual_path}")
-            st.info("docs/manual.md を作成してください。")
-        
-        if st.button("閉じる", type="primary", use_container_width=True):
-            st.rerun()
-    
     # フィルタ選択肢の読み込み
     filter_choices = load_filter_choices()
     
     # サイドバー (フィルタ)
     st.sidebar.header("🔽 条件絞り込み")
-    
-    # マニュアルボタン
-    if st.sidebar.button("📖 使い方・収録データ情報", use_container_width=True):
-        show_manual()
     
     st.sidebar.markdown("---")
     
@@ -524,9 +518,10 @@ def main_app(bq_client):
         st.session_state['search_results'] = None
         st.rerun()
 
-    # メインコンテンツ (検索結果をタブで表示)
+    # メインコンテンツ
     st.markdown("---")
 
+    # 検索実行
     if search_button:
         agencies = st.session_state.get('selected_agencies', [])
         councils = st.session_state.get('selected_councils', [])
@@ -567,26 +562,23 @@ def main_app(bq_client):
             # 検索結果をセッションステートに保存
             st.session_state['search_results'] = all_results
     
-    # 検索結果の表示（セッションステートから取得）
-    if st.session_state['search_results'] is not None:
-        all_results = st.session_state['search_results']
-        tabs = st.tabs(list(TABLE_CONFIGS.keys()))
-        
-        councils = st.session_state.get('selected_councils', [])
-        
-        for i, (tab_name, tab) in enumerate(zip(TABLE_CONFIGS.keys(), tabs)):
-            with tab:
-                # 会議体が選択されている場合、予算タブには情報メッセージを表示
-                if councils and len(councils) > 0 and tab_name == "予算":
-                    st.info("会議体が選択されているため、予算の検索は実行されません。")
-                    continue
-                
-                results_df = all_results[tab_name]["df"]
-                column_names = all_results[tab_name]["column_names"]
+    # タブの作成（常に表示）
+    tabs = st.tabs(["予算", "会議資料", "📖 使い方・収録データ情報"])
+    
+    councils = st.session_state.get('selected_councils', [])
+    
+    # 予算タブ
+    with tabs[0]:
+        if st.session_state['search_results'] is not None:
+            # 会議体が選択されている場合の情報メッセージ
+            if councils and len(councils) > 0:
+                st.info("会議体が選択されているため、予算の検索は実行されません。")
+            else:
+                results_df = st.session_state['search_results']["予算"]["df"]
+                column_names = st.session_state['search_results']["予算"]["column_names"]
                 
                 if not results_df.empty:
                     page_count = len(results_df)
-                    # 日本語カラム名を取得
                     file_id_col_jp = column_names.get('file_id', 'ファイルID')
                     file_count = results_df[file_id_col_jp].nunique()
                     
@@ -612,9 +604,49 @@ def main_app(bq_client):
                         st.dataframe(display_df, height=2000, use_container_width=True)
                 else:
                     st.info("該当する結果が見つかりませんでした。")
-    else:
-        # 検索前のデフォルト画面
-        st.info("🔍 条件を絞り込んで検索ボタンを押してください")
+        else:
+            st.info("🔍 左側のサイドバーで条件を絞り込んで検索ボタンを押してください")
+    
+    # 会議資料タブ
+    with tabs[1]:
+        if st.session_state['search_results'] is not None:
+            results_df = st.session_state['search_results']["会議資料"]["df"]
+            column_names = st.session_state['search_results']["会議資料"]["column_names"]
+            
+            if not results_df.empty:
+                page_count = len(results_df)
+                file_id_col_jp = column_names.get('file_id', 'ファイルID')
+                file_count = results_df[file_id_col_jp].nunique()
+                
+                st.success(f"{file_count}ファイル・{page_count}ページ ヒットしました")
+                
+                # ファイルIDカラムを除外して表示用DataFrameを作成
+                display_df = results_df.drop(columns=[file_id_col_jp])
+                
+                url_col_jp = column_names.get('source_url', 'URL')
+                if url_col_jp in display_df.columns:
+                    st.dataframe(
+                        display_df, 
+                        height=2000, 
+                        use_container_width=True,
+                        column_config={
+                            url_col_jp: st.column_config.LinkColumn(
+                                url_col_jp,
+                                display_text="📄リンク"
+                            )
+                        }
+                    )
+                else:
+                    st.dataframe(display_df, height=2000, use_container_width=True)
+            else:
+                st.info("該当する結果が見つかりませんでした。")
+        else:
+            st.info("🔍 左側のサイドバーで条件を絞り込んで検索ボタンを押してください")
+    
+    # マニュアルタブ
+    with tabs[2]:
+        manual_content = load_manual()
+        st.markdown(manual_content)
 
 # ----------------------------------------------------------------------
 # アプリケーションの実行

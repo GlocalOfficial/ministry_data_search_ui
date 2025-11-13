@@ -24,7 +24,7 @@ TABLE_CONFIGS = {
         "table": st.secrets["bigquery"]["budget_table"],
         "columns": {
             'file_id': 'ファイルID',
-            'title': 'タイトル',
+            'title': '資料名',
             'ministry': '省庁',
             'agency': '本局/外局',
             'fiscal_year_start': '年度',
@@ -40,7 +40,7 @@ TABLE_CONFIGS = {
         "table": st.secrets["bigquery"]["council_table"],
         "columns": {
             'file_id': 'ファイルID',
-            'title': 'タイトル',
+            'title': '資料名',
             'ministry': '省庁',
             'agency': '本局/外局',
             'council': '会議体名',
@@ -97,6 +97,8 @@ if 'session_id' not in st.session_state:
     st.session_state['session_id'] = ""
 if 'selected_agencies' not in st.session_state:
     st.session_state['selected_agencies'] = []
+if 'selected_councils' not in st.session_state:
+    st.session_state['selected_councils'] = []
 if 'search_results' not in st.session_state:
     st.session_state['search_results'] = None
 
@@ -193,24 +195,99 @@ def show_login_form(bq_client):
                     st.error("ユーザーIDまたはパスワードが間違っています。")
 
 # ----------------------------------------------------------------------
-# ツリーデータ読み込み
+# JSONデータ読み込み
 # ----------------------------------------------------------------------
 
 @st.cache_data
 def load_ministry_tree():
     """
-    ministry_tree.jsonを読み込みます。
+    choices/ministry_tree.jsonを読み込みます。
     """
-    file_path = Path(__file__).parent / "ministry_tree.json"
+    file_path = Path(__file__).parent / "choices" / "ministry_tree.json"
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             return json.load(f)
     except FileNotFoundError:
-        st.error(f"エラー: '{file_path.name}' が見つかりません。")
+        st.error(f"エラー: '{file_path}' が見つかりません。")
         return []
     except json.JSONDecodeError:
-        st.error(f"エラー: '{file_path.name}' のJSON形式が不正です。")
+        st.error(f"エラー: '{file_path}' のJSON形式が不正です。")
         return []
+
+@st.cache_data(ttl=3600)
+def load_council_list(_bq_client):
+    """
+    BigQueryから会議体リストを読み込み、ツリー形式に変換します。
+    """
+    try:
+        query = f"""
+            SELECT 
+                title,
+                value,
+                ministry
+            FROM `{st.secrets["bigquery"]["project_id"]}.{st.secrets["bigquery"]["rawdata_dataset"]}.{st.secrets["bigquery"]["council_list"]}`
+            ORDER BY ministry, title
+        """
+        
+        df = _bq_client.query(query).to_dataframe()
+        
+        if df.empty:
+            st.warning("会議体リストが空です")
+            return []
+        
+        # ministryごとにグループ化してツリー形式に変換
+        tree_data = []
+        ministry_groups = df.groupby('ministry')
+        
+        for ministry, group in ministry_groups:
+            children = [
+                {"title": row['title'], "value": row['value']}
+                for _, row in group.iterrows()
+            ]
+            
+            tree_data.append({
+                "title": ministry,
+                "value": f"{ministry}_parent",  # 親ノードには一意のvalue
+                "children": children
+            })
+        
+        return tree_data
+    except Exception as e:
+        st.error(f"会議体リストの読み込みエラー: {e}")
+        import traceback
+        st.error(traceback.format_exc())
+        return []
+
+@st.cache_data
+def load_filter_choices():
+    """
+    カテゴリ、資料形式、年度の選択肢をJSONファイルから読み込みます。
+    """
+    base_path = Path(__file__).parent / "choices"
+    
+    choices = {
+        'category': [],
+        'sub_category': [],
+        'year': []
+    }
+    
+    files = {
+        'category': 'category.json',
+        'sub_category': 'sub_category.json',
+        'year': 'year.json'
+    }
+    
+    for key, filename in files.items():
+        file_path = base_path / filename
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                choices[key] = json.load(f)
+        except FileNotFoundError:
+            st.error(f"エラー: '{file_path}' が見つかりません。")
+        except json.JSONDecodeError:
+            st.error(f"エラー: '{file_path}' のJSON形式が不正です。")
+    
+    return choices
 
 def extract_agencies_from_tree_result(tree_result):
     """
@@ -232,30 +309,7 @@ def extract_agencies_from_tree_result(tree_result):
 # メインアプリケーション
 # ----------------------------------------------------------------------
 
-@st.cache_data(ttl=3600)
-def load_metadata(_bq_client, dataset, table):
-    """
-    フィルタ用のメタデータをBigQueryから読み込みます。
-    """
-    query = f"""
-      SELECT 
-        ministry,
-        agency,
-        category,
-        sub_category,
-        fiscal_year_start
-      FROM `{st.secrets["bigquery"]["project_id"]}.{dataset}.{table}`
-      GROUP BY ministry, agency, category, sub_category, fiscal_year_start
-      ORDER BY ministry, agency, category, sub_category, fiscal_year_start
-    """
-    try:
-        df = _bq_client.query(query).to_dataframe()
-        return df
-    except Exception as e:
-        st.error(f"メタデータの読み込みエラー: {e}")
-        return pd.DataFrame()
-
-def run_search(_bq_client, dataset, table, column_names, keyword, agencies, categories, sub_categories, years):
+def run_search(_bq_client, dataset, table, column_names, keyword, agencies, councils, categories, sub_categories, years):
     """
     検索クエリを実行します。
     """
@@ -274,6 +328,10 @@ def run_search(_bq_client, dataset, table, column_names, keyword, agencies, cate
     if agencies and len(agencies) > 0:
         where_conditions.append("agency IN UNNEST(@agencies)")
         query_params.append(bigquery.ArrayQueryParameter("agencies", "STRING", agencies))
+    
+    if councils and len(councils) > 0:
+        where_conditions.append("council IN UNNEST(@councils)")
+        query_params.append(bigquery.ArrayQueryParameter("councils", "STRING", councils))
         
     if categories:
         where_conditions.append("category IN UNNEST(@categories)")
@@ -309,7 +367,7 @@ def run_search(_bq_client, dataset, table, column_names, keyword, agencies, cate
         st.error(f"検索エラー: {e}")
         return pd.DataFrame()
 
-def log_search_to_bigquery(_bq_client, keyword, agencies, categories, sub_categories, years):
+def log_search_to_bigquery(_bq_client, keyword, agencies, councils, categories, sub_categories, years):
     """
     検索ログをBigQueryに保存します。
     """
@@ -326,6 +384,7 @@ def log_search_to_bigquery(_bq_client, keyword, agencies, categories, sub_catego
                 "sessionId": st.session_state['session_id'],
                 "keyword": keyword if keyword else "",
                 "filter_ministries": ", ".join(agencies) if agencies else "",
+                "filter_councils": ", ".join(councils) if councils else "",
                 "filter_category": ", ".join(categories) if categories else "",
                 "filter_subcategory": ", ".join(sub_categories) if sub_categories else "",
                 "filter_year": ", ".join([str(y) for y in years]) if years else ""
@@ -344,16 +403,39 @@ def main_app(bq_client):
     """
     st.title("省庁資料検索ツール (β版_v2)")
     
+    # マニュアル表示用のダイアログ
+    @st.dialog("📖 使用方法・収録データ情報", width="large")
+    def show_manual():
+        manual_path = Path(__file__).parent / "docs" / "manual.md"
+        try:
+            with open(manual_path, 'r', encoding='utf-8') as f:
+                st.markdown(f.read())
+        except FileNotFoundError:
+            st.error(f"マニュアルファイルが見つかりません: {manual_path}")
+            st.info("docs/manual.md を作成してください。")
+        
+        if st.button("閉じる", type="primary", use_container_width=True):
+            st.rerun()
+    
+    # フィルタ選択肢の読み込み
+    filter_choices = load_filter_choices()
+    
     # サイドバー (フィルタ)
     st.sidebar.header("🔽 条件絞り込み")
     
-    keyword = st.sidebar.text_input("キーワード", placeholder="キーワードを入力")
+    # マニュアルボタン
+    if st.sidebar.button("📖 使い方・収録データ情報", use_container_width=True):
+        show_manual()
+    
+    st.sidebar.markdown("---")
+    
+    keyword = st.sidebar.text_input("**キーワード**", placeholder="キーワードを入力(複数の場合はスペースで区切る)")
     
     # ツリー形式の省庁選択
     tree_data = load_ministry_tree()
     
     with st.sidebar:
-        st.markdown("省庁")
+        st.markdown("**省庁**")
         if tree_data:
             tree_result = st_ant_tree(
                 treeData=tree_data,
@@ -372,32 +454,52 @@ def main_app(bq_client):
         else:
             st.error("省庁ツリーの読み込みに失敗しました。")
     
-    # 全テーブルのメタデータを統合して読み込み
-    with st.spinner("フィルタを読み込み中..."):
-        all_meta_dfs = []
-        for tab_name, tab_config in TABLE_CONFIGS.items():
-            meta_df = load_metadata(bq_client, tab_config["dataset"], tab_config["table"])
-            if not meta_df.empty:
-                all_meta_dfs.append(meta_df)
-        
-        if all_meta_dfs:
-            combined_meta_df = pd.concat(all_meta_dfs, ignore_index=True).drop_duplicates()
+    # 会議体選択（会議資料タブ用）
+    council_tree_data = load_council_list(bq_client)
+    
+    with st.sidebar:
+        st.markdown("**会議体（会議資料のみ）**")
+        if council_tree_data:
+            council_result = st_ant_tree(
+                treeData=council_tree_data,
+                treeCheckable=True,
+                allowClear=True,
+                key="council_tree"
+            )
+            
+            current_councils = extract_agencies_from_tree_result(council_result)
+            st.session_state['selected_councils'] = current_councils
+            
+            if st.session_state['selected_councils']:
+                st.caption(f"選択中: {len(st.session_state['selected_councils'])}件")
+            else:
+                st.caption("選択なし")
         else:
-            st.sidebar.error("フィルタの読み込みに失敗しました。")
-            st.stop()
-
-    categories = st.sidebar.multiselect(
-        "カテゴリ:",
-        sorted(combined_meta_df['category'].unique())
+            st.info("会議体リストがありません")
+    
+    # カテゴリ選択
+    category_options = {item['title']: item['value'] for item in filter_choices['category']}
+    selected_category_titles = st.sidebar.multiselect(
+        "**カテゴリ**",
+        options=list(category_options.keys())
     )
-    sub_categories = st.sidebar.multiselect(
-        "資料形式:",
-        sorted(combined_meta_df['sub_category'].unique())
+    categories = [category_options[title] for title in selected_category_titles]
+    
+    # 資料形式選択
+    sub_category_options = {item['title']: item['value'] for item in filter_choices['sub_category']}
+    selected_sub_category_titles = st.sidebar.multiselect(
+        "**資料形式**",
+        options=list(sub_category_options.keys())
     )
-    years = st.sidebar.multiselect(
-        "年度:",
-        sorted(combined_meta_df['fiscal_year_start'].unique(), reverse=True)
+    sub_categories = [sub_category_options[title] for title in selected_sub_category_titles]
+    
+    # 年度選択
+    year_options = {item['title']: item['value'] for item in filter_choices['year']}
+    selected_year_titles = st.sidebar.multiselect(
+        "**年度**",
+        options=list(year_options.keys())
     )
+    years = [year_options[title] for title in selected_year_titles]
 
     st.sidebar.markdown("---")
     
@@ -407,6 +509,7 @@ def main_app(bq_client):
     
     if st.sidebar.button("フィルタをリセット", use_container_width=True):
         st.session_state['selected_agencies'] = []
+        st.session_state['selected_councils'] = []
         st.session_state['search_results'] = None
         st.rerun()
     
@@ -417,6 +520,7 @@ def main_app(bq_client):
         st.session_state['user_id'] = ""
         st.session_state['session_id'] = ""
         st.session_state['selected_agencies'] = []
+        st.session_state['selected_councils'] = []
         st.session_state['search_results'] = None
         st.rerun()
 
@@ -425,23 +529,35 @@ def main_app(bq_client):
 
     if search_button:
         agencies = st.session_state.get('selected_agencies', [])
+        councils = st.session_state.get('selected_councils', [])
         
         # 検索ログを記録（検索実行時に1回だけ）
         log_search_to_bigquery(
-            bq_client, keyword, agencies, categories, 
+            bq_client, keyword, agencies, councils, categories, 
             sub_categories, years
         )
         
         with st.spinner("🔄 検索中..."):
             all_results = {}
             for tab_name, tab_config in TABLE_CONFIGS.items():
+                # 会議体が選択されている場合は予算タブをスキップ
+                if councils and len(councils) > 0 and tab_name == "予算":
+                    all_results[tab_name] = {
+                        "df": pd.DataFrame(),
+                        "column_names": tab_config["columns"]
+                    }
+                    continue
+                
                 dataset = tab_config["dataset"]
                 table = tab_config["table"]
                 column_names = tab_config["columns"]
                 
+                # 会議資料タブの場合のみcouncilフィルタを適用
+                councils_for_search = councils if tab_name == "会議資料" else []
+                
                 results_df = run_search(
                     bq_client, dataset, table, column_names,
-                    keyword, agencies, categories, sub_categories, years
+                    keyword, agencies, councils_for_search, categories, sub_categories, years
                 )
                 all_results[tab_name] = {
                     "df": results_df,
@@ -456,35 +572,49 @@ def main_app(bq_client):
         all_results = st.session_state['search_results']
         tabs = st.tabs(list(TABLE_CONFIGS.keys()))
         
+        councils = st.session_state.get('selected_councils', [])
+        
         for i, (tab_name, tab) in enumerate(zip(TABLE_CONFIGS.keys(), tabs)):
             with tab:
+                # 会議体が選択されている場合、予算タブには情報メッセージを表示
+                if councils and len(councils) > 0 and tab_name == "予算":
+                    st.info("会議体が選択されているため、予算の検索は実行されません。")
+                    continue
+                
                 results_df = all_results[tab_name]["df"]
                 column_names = all_results[tab_name]["column_names"]
                 
                 if not results_df.empty:
                     page_count = len(results_df)
-                    file_id_col = column_names.get('file_id', 'file_id')
-                    file_count = results_df[file_id_col].nunique()
+                    # 日本語カラム名を取得
+                    file_id_col_jp = column_names.get('file_id', 'ファイルID')
+                    file_count = results_df[file_id_col_jp].nunique()
                     
                     st.success(f"{file_count}ファイル・{page_count}ページ ヒットしました")
                     
-                    url_col = column_names.get('source_url')
-                    if url_col:
+                    # ファイルIDカラムを除外して表示用DataFrameを作成
+                    display_df = results_df.drop(columns=[file_id_col_jp])
+                    
+                    url_col_jp = column_names.get('source_url', 'URL')
+                    if url_col_jp in display_df.columns:
                         st.dataframe(
-                            results_df, 
+                            display_df, 
                             height=2000, 
                             use_container_width=True,
                             column_config={
-                                url_col: st.column_config.LinkColumn(
-                                    url_col,
+                                url_col_jp: st.column_config.LinkColumn(
+                                    url_col_jp,
                                     display_text="📄リンク"
                                 )
                             }
                         )
                     else:
-                        st.dataframe(results_df, height=2000, use_container_width=True)
+                        st.dataframe(display_df, height=2000, use_container_width=True)
                 else:
                     st.info("該当する結果が見つかりませんでした。")
+    else:
+        # 検索前のデフォルト画面
+        st.info("🔍 条件を絞り込んで検索ボタンを押してください")
 
 # ----------------------------------------------------------------------
 # アプリケーションの実行
