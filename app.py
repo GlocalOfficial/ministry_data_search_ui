@@ -556,10 +556,13 @@ def main_app(bq_client):
                     
                     st.success(f"{file_count}ファイル・{page_count}ページ ヒットしました")
                     
+                    # ファイルIDカラムを除外して表示用DataFrameを作成
+                    display_df = results_df.drop(columns=[file_id_col])
+                    
                     url_col = column_names.get('source_url')
                     if url_col:
                         st.dataframe(
-                            results_df, 
+                            display_df, 
                             height=2000, 
                             use_container_width=True,
                             column_config={
@@ -570,7 +573,7 @@ def main_app(bq_client):
                             }
                         )
                     else:
-                        st.dataframe(results_df, height=2000, use_container_width=True)
+                        st.dataframe(display_df, height=2000, use_container_width=True)
                 else:
                     st.info("該当する結果が見つかりませんでした。")
 
