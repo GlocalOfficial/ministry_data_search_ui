@@ -448,29 +448,6 @@ def main_app(bq_client):
         else:
             st.error("省庁ツリーの読み込みに失敗しました。")
     
-    # 会議体選択（会議資料タブ用）
-    council_tree_data = load_council_list(bq_client)
-    
-    with st.sidebar:
-        st.markdown("**会議体（会議資料のみ）**")
-        if council_tree_data:
-            council_result = st_ant_tree(
-                treeData=council_tree_data,
-                treeCheckable=True,
-                allowClear=True,
-                key="council_tree"
-            )
-            
-            current_councils = extract_agencies_from_tree_result(council_result)
-            st.session_state['selected_councils'] = current_councils
-            
-            if st.session_state['selected_councils']:
-                st.caption(f"選択中: {len(st.session_state['selected_councils'])}件")
-            else:
-                st.caption("選択なし")
-        else:
-            st.info("会議体リストがありません")
-    
     # カテゴリ選択
     category_options = {item['title']: item['value'] for item in filter_choices['category']}
     selected_category_titles = st.sidebar.multiselect(
@@ -494,7 +471,29 @@ def main_app(bq_client):
         options=list(year_options.keys())
     )
     years = [year_options[title] for title in selected_year_titles]
-
+    # 会議体選択（会議資料タブ用）
+    council_tree_data = load_council_list(bq_client)
+    
+    with st.sidebar:
+        st.markdown("**会議体（会議資料のみ）**")
+        if council_tree_data:
+            council_result = st_ant_tree(
+                treeData=council_tree_data,
+                treeCheckable=True,
+                allowClear=True,
+                key="council_tree"
+            )
+            
+            current_councils = extract_agencies_from_tree_result(council_result)
+            st.session_state['selected_councils'] = current_councils
+            
+            if st.session_state['selected_councils']:
+                st.caption(f"選択中: {len(st.session_state['selected_councils'])}件")
+            else:
+                st.caption("選択なし")
+        else:
+            st.info("会議体リストがありません")
+    
     st.sidebar.markdown("---")
     
     search_button = st.sidebar.button("🔍 検索", type="primary", use_container_width=True)
