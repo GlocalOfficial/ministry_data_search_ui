@@ -145,7 +145,9 @@ def check_credentials_bigquery(bq_client, user_id, password):
         query = f"""
             SELECT id 
             FROM {auth_table_id_str}
-            WHERE id = @user_id AND pw = @password
+            WHERE id = @user_id 
+              AND pw = @password
+              AND is_alive = TRUE
             LIMIT 1
         """
         
@@ -247,7 +249,7 @@ def load_council_list(_bq_client):
             
             tree_data.append({
                 "title": ministry,
-                "value": f"{ministry}_parent",  # 親ノードには一意のvalue
+                "value": f"{ministry}_parent",
                 "children": children
             })
         
@@ -415,17 +417,14 @@ def main_app(bq_client):
     """
     st.title("省庁資料検索ツール (β版_v2)")
     
-    # フィルタ選択肢の読み込み
     filter_choices = load_filter_choices()
     
-    # サイドバー (フィルタ)
     st.sidebar.header("🔽 条件絞り込み")
     
     st.sidebar.markdown("---")
     
     keyword = st.sidebar.text_input("**キーワード**", placeholder="キーワードを入力(複数の場合はスペースで区切る)")
     
-    # ツリー形式の省庁選択
     tree_data = load_ministry_tree()
     
     with st.sidebar:
@@ -448,7 +447,6 @@ def main_app(bq_client):
         else:
             st.error("省庁ツリーの読み込みに失敗しました。")
     
-    # カテゴリ選択
     category_options = {item['title']: item['value'] for item in filter_choices['category']}
     selected_category_titles = st.sidebar.multiselect(
         "**カテゴリ**",
@@ -456,7 +454,6 @@ def main_app(bq_client):
     )
     categories = [category_options[title] for title in selected_category_titles]
     
-    # 資料形式選択
     sub_category_options = {item['title']: item['value'] for item in filter_choices['sub_category']}
     selected_sub_category_titles = st.sidebar.multiselect(
         "**資料形式**",
@@ -464,14 +461,13 @@ def main_app(bq_client):
     )
     sub_categories = [sub_category_options[title] for title in selected_sub_category_titles]
     
-    # 年度選択
     year_options = {item['title']: item['value'] for item in filter_choices['year']}
     selected_year_titles = st.sidebar.multiselect(
         "**年度**",
         options=list(year_options.keys())
     )
     years = [year_options[title] for title in selected_year_titles]
-    # 会議体選択（会議資料タブ用）
+    
     council_tree_data = load_council_list(bq_client)
     
     with st.sidebar:
@@ -517,15 +513,12 @@ def main_app(bq_client):
         st.session_state['search_results'] = None
         st.rerun()
 
-    # メインコンテンツ
     st.markdown("---")
 
-    # 検索実行
     if search_button:
         agencies = st.session_state.get('selected_agencies', [])
         councils = st.session_state.get('selected_councils', [])
         
-        # 検索ログを記録（検索実行時に1回だけ）
         log_search_to_bigquery(
             bq_client, keyword, agencies, councils, categories, 
             sub_categories, years
@@ -534,7 +527,6 @@ def main_app(bq_client):
         with st.spinner("🔄 検索中..."):
             all_results = {}
             for tab_name, tab_config in TABLE_CONFIGS.items():
-                # 会議体が選択されている場合は予算タブをスキップ
                 if councils and len(councils) > 0 and tab_name == "予算":
                     all_results[tab_name] = {
                         "df": pd.DataFrame(),
@@ -546,7 +538,6 @@ def main_app(bq_client):
                 table = tab_config["table"]
                 column_names = tab_config["columns"]
                 
-                # 会議資料タブの場合のみcouncilフィルタを適用
                 councils_for_search = councils if tab_name == "会議資料" else []
                 
                 results_df = run_search(
@@ -558,18 +549,14 @@ def main_app(bq_client):
                     "column_names": column_names
                 }
             
-            # 検索結果をセッションステートに保存
             st.session_state['search_results'] = all_results
     
-    # タブの作成（常に表示）
     tabs = st.tabs(["予算", "会議資料", "🔰使用方法・収録データ情報"])
     
     councils = st.session_state.get('selected_councils', [])
     
-    # 予算タブ
     with tabs[0]:
         if st.session_state['search_results'] is not None:
-            # 会議体が選択されている場合の情報メッセージ
             if councils and len(councils) > 0:
                 st.info("会議体が選択されているため、予算の検索は実行されません。")
             else:
@@ -583,7 +570,6 @@ def main_app(bq_client):
                     
                     st.success(f"{file_count}ファイル・{page_count}ページ ヒットしました")
                     
-                    # ファイルIDカラムを除外して表示用DataFrameを作成
                     display_df = results_df.drop(columns=[file_id_col_jp])
                     
                     url_col_jp = column_names.get('source_url', 'URL')
@@ -606,7 +592,6 @@ def main_app(bq_client):
         else:
             st.info("🔍 左側のサイドバーで条件を絞り込んで検索ボタンを押してください")
     
-    # 会議資料タブ
     with tabs[1]:
         if st.session_state['search_results'] is not None:
             results_df = st.session_state['search_results']["会議資料"]["df"]
@@ -619,7 +604,6 @@ def main_app(bq_client):
                 
                 st.success(f"{file_count}ファイル・{page_count}ページ ヒットしました")
                 
-                # ファイルIDカラムを除外して表示用DataFrameを作成
                 display_df = results_df.drop(columns=[file_id_col_jp])
                 
                 url_col_jp = column_names.get('source_url', 'URL')
@@ -642,7 +626,6 @@ def main_app(bq_client):
         else:
             st.info("🔍 左側のサイドバーで条件を絞り込んで検索ボタンを押してください")
     
-    # マニュアルタブ
     with tabs[2]:
         manual_content = load_manual()
         st.markdown(manual_content)
