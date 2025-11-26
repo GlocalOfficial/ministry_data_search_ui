@@ -449,9 +449,6 @@ def main_app(bq_client):
             
             current_agencies = extract_values_from_tree_result(tree_result)
             st.session_state['selected_agencies'] = current_agencies
-            
-            if st.session_state['selected_agencies']:
-                st.caption(f"✓ {len(st.session_state['selected_agencies'])}件選択中")
         else:
             st.error("省庁ツリーの読み込みに失敗しました。")
     
@@ -469,9 +466,6 @@ def main_app(bq_client):
             
             current_categories = extract_values_from_tree_result(category_result)
             st.session_state['selected_categories'] = current_categories
-            
-            if st.session_state['selected_categories']:
-                st.caption(f"✓ {len(st.session_state['selected_categories'])}件選択中")
     
     # 資料形式をツリー形式に変更
     with st.sidebar:
@@ -487,9 +481,6 @@ def main_app(bq_client):
             
             current_sub_categories = extract_values_from_tree_result(sub_category_result)
             st.session_state['selected_sub_categories'] = current_sub_categories
-            
-            if st.session_state['selected_sub_categories']:
-                st.caption(f"✓ {len(st.session_state['selected_sub_categories'])}件選択中")
 
     
     # 年度をツリー形式に変更(フラットリストとして表示)
@@ -506,9 +497,6 @@ def main_app(bq_client):
             
             current_years = extract_values_from_tree_result(year_result)
             st.session_state['selected_years'] = current_years
-            
-            if st.session_state['selected_years']:
-                st.caption(f"✓ {len(st.session_state['selected_years'])}件選択中")
     
     council_tree_data = load_council_list(bq_client)
     
@@ -525,9 +513,6 @@ def main_app(bq_client):
             
             current_councils = extract_values_from_tree_result(council_result)
             st.session_state['selected_councils'] = current_councils
-            
-            if st.session_state['selected_councils']:
-                st.caption(f"✓ {len(st.session_state['selected_councils'])}件選択中")
         else:
             st.info("会議体リストがありません")
     
