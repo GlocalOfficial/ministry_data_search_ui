@@ -108,6 +108,18 @@ if 'selected_years' not in st.session_state:
 if 'search_results' not in st.session_state:
     st.session_state['search_results'] = None
 
+# 検索実行時の条件を保持するセッションステートを追加
+if 'last_search_conditions' not in st.session_state:
+    st.session_state['last_search_conditions'] = {
+        'keyword_and': '',
+        'keyword_or': '',
+        'agencies': [],
+        'councils': [],
+        'categories': [],
+        'sub_categories': [],
+        'years': []
+    }
+
 # ----------------------------------------------------------------------
 # 認証
 # ----------------------------------------------------------------------
@@ -329,7 +341,7 @@ def extract_values_from_tree_result(tree_result):
 # メインアプリケーション
 # ----------------------------------------------------------------------
 
-def run_search(_bq_client, dataset, table, column_names, keyword, agencies, councils, categories, sub_categories, years):
+def run_search(_bq_client, dataset, table, column_names, keyword_and, keyword_or, agencies, councils, categories, sub_categories, years):
     """
     検索クエリを実行します。
     """
@@ -366,9 +378,32 @@ def run_search(_bq_client, dataset, table, column_names, keyword, agencies, coun
         where_conditions.append("fiscal_year_start IN UNNEST(@years)")
         query_params.append(bigquery.ArrayQueryParameter("years", "INT64", int_years))
 
-    if keyword:
-        where_conditions.append("(LOWER(title) LIKE @keyword OR LOWER(content_text) LIKE @keyword)")
-        query_params.append(bigquery.ScalarQueryParameter("keyword", "STRING", f"%{keyword.lower()}%"))
+    # 【変更】キーワード検索条件の構築
+    keyword_conditions = []
+    
+    # AND検索の条件
+    if keyword_and:
+        keywords = keyword_and.lower().split()
+        for i, kw in enumerate(keywords):
+            param_name = f"keyword_and_{i}"
+            keyword_conditions.append(f"(LOWER(title) LIKE @{param_name} OR LOWER(content_text) LIKE @{param_name})")
+            query_params.append(bigquery.ScalarQueryParameter(param_name, "STRING", f"%{kw}%"))
+
+    # OR検索の条件
+    if keyword_or:
+        keywords = keyword_or.lower().split()
+        or_sub_conditions = []
+        for i, kw in enumerate(keywords):
+            param_name = f"keyword_or_{i}"
+            or_sub_conditions.append(f"(LOWER(title) LIKE @{param_name} OR LOWER(content_text) LIKE @{param_name})")
+            query_params.append(bigquery.ScalarQueryParameter(param_name, "STRING", f"%{kw}%"))
+        
+        if or_sub_conditions:
+            keyword_conditions.append("(" + " OR ".join(or_sub_conditions) + ")")
+
+    if keyword_conditions:
+        # AND/OR検索の条件全体を結合 (AND/OR検索をANDで結合)
+        where_conditions.append(" AND ".join(keyword_conditions))
 
     if where_conditions:
         final_query = base_query + " WHERE " + " AND ".join(where_conditions)
@@ -387,7 +422,7 @@ def run_search(_bq_client, dataset, table, column_names, keyword, agencies, coun
         st.error(f"検索エラー: {e}")
         return pd.DataFrame()
 
-def log_search_to_bigquery(_bq_client, keyword, agencies, councils, categories, sub_categories, years):
+def log_search_to_bigquery(_bq_client, keyword_and, keyword_or, agencies, councils, categories, sub_categories, years):
     """
     検索ログをBigQueryに保存します。
     """
@@ -402,7 +437,8 @@ def log_search_to_bigquery(_bq_client, keyword, agencies, councils, categories, 
             {
                 "timestamp": pd.Timestamp.now(tz='Asia/Tokyo').isoformat(),
                 "sessionId": st.session_state['session_id'],
-                "keyword": keyword if keyword else "",
+                "keyword_and": keyword_and if keyword_and else "",
+                "keyword_or": keyword_or if keyword_or else "",
                 "filter_ministries": ", ".join(agencies) if agencies else "",
                 "filter_councils": ", ".join(councils) if councils else "",
                 "filter_category": ", ".join(categories) if categories else "",
@@ -429,10 +465,16 @@ def main_app(bq_client):
     
     st.sidebar.markdown("---")
     
-    keyword = st.sidebar.text_input(
-        "**キーワード**", 
+    # 【変更】キーワード入力欄をAND/ORに分ける
+    keyword_and = st.sidebar.text_input(
+        "**キーワード (AND検索)**", 
         placeholder="例:AI 活用",
-        help="複数の場合はスペースで区切ってください")
+        help="複数の単語をスペースで区切ると、全ての単語を含む資料を検索します")
+
+    keyword_or = st.sidebar.text_input(
+        "**キーワード (OR検索)**", 
+        placeholder="例:教育 医療",
+        help="複数の単語をスペースで区切ると、いずれかの単語を含む資料を検索します")
     
     tree_data = load_ministry_tree()
     
@@ -543,6 +585,11 @@ def main_app(bq_client):
         st.session_state['selected_sub_categories'] = []
         st.session_state['selected_years'] = []
         st.session_state['search_results'] = None
+        # last_search_conditions もリセット
+        st.session_state['last_search_conditions'] = {
+            'keyword_and': '', 'keyword_or': '', 'agencies': [], 'councils': [], 
+            'categories': [], 'sub_categories': [], 'years': []
+        }
         st.rerun()
 
     st.markdown("---")
@@ -554,8 +601,20 @@ def main_app(bq_client):
         sub_categories = st.session_state.get('selected_sub_categories', [])
         years = st.session_state.get('selected_years', [])
         
+        # 【追加】検索条件をセッションに保存
+        st.session_state['last_search_conditions'] = {
+            'keyword_and': keyword_and,
+            'keyword_or': keyword_or,
+            'agencies': agencies,
+            'councils': councils,
+            'categories': categories,
+            'sub_categories': sub_categories,
+            'years': years
+        }
+        
+        # 【変更】ログ記録関数に新しい引数を渡す
         log_search_to_bigquery(
-            bq_client, keyword, agencies, councils, categories, 
+            bq_client, keyword_and, keyword_or, agencies, councils, categories, 
             sub_categories, years
         )
         
@@ -575,9 +634,10 @@ def main_app(bq_client):
                 
                 councils_for_search = councils if tab_name == "会議資料" else []
                 
+                # 【変更】検索実行関数に新しい引数を渡す
                 results_df = run_search(
                     bq_client, dataset, table, column_names,
-                    keyword, agencies, councils_for_search, categories, sub_categories, years
+                    keyword_and, keyword_or, agencies, councils_for_search, categories, sub_categories, years
                 )
                 all_results[tab_name] = {
                     "df": results_df,
@@ -586,16 +646,32 @@ def main_app(bq_client):
             
             st.session_state['search_results'] = all_results
     
-    # 検索条件の表示
+    # 【変更】検索条件の表示を 'last_search_conditions' に基づいて行う
     if st.session_state['search_results'] is not None:
+        # 適用中の条件を last_search_conditions から取得
+        last_conditions = st.session_state['last_search_conditions']
+        
+        keyword_and = last_conditions.get('keyword_and', '')
+        keyword_or = last_conditions.get('keyword_or', '')
+        agencies = last_conditions.get('agencies', [])
+        councils = last_conditions.get('councils', [])
+        categories = last_conditions.get('categories', [])
+        sub_categories = last_conditions.get('sub_categories', [])
+        years = last_conditions.get('years', [])
+        
         search_conditions = ["📋 適用中の検索条件"]
         
-        # キーワード
-        if keyword:
-            search_conditions.append(f"**キーワード**: {keyword}")
+        # キーワード (AND/ORを統合して表示)
+        keyword_parts = []
+        if keyword_and:
+            keyword_parts.append(f"AND検索: **{keyword_and}**")
+        if keyword_or:
+            keyword_parts.append(f"OR検索: **{keyword_or}**")
+
+        if keyword_parts:
+            search_conditions.append(" / ".join(keyword_parts))
         
         # 省庁
-        agencies = st.session_state.get('selected_agencies', [])
         if agencies:
             if len(agencies) <= 3:
                 search_conditions.append(f"**省庁**: {', '.join(agencies)}")
@@ -603,12 +679,10 @@ def main_app(bq_client):
                 search_conditions.append(f"**省庁**: {', '.join(agencies[:3])}... (計{len(agencies)}件)")
         
         # カテゴリ
-        categories = st.session_state.get('selected_categories', [])
         if categories:
             search_conditions.append(f"**カテゴリ**: {', '.join(categories)}")
         
         # 資料形式
-        sub_categories = st.session_state.get('selected_sub_categories', [])
         if sub_categories:
             if len(sub_categories) <= 3:
                 search_conditions.append(f"**資料形式**: {', '.join(sub_categories)}")
@@ -616,7 +690,6 @@ def main_app(bq_client):
                 search_conditions.append(f"**資料形式**: {', '.join(sub_categories[:3])}... (計{len(sub_categories)}件)")
         
         # 年度
-        years = st.session_state.get('selected_years', [])
         if years:
             year_strs = [str(y) for y in sorted(years, reverse=True)]
             if len(year_strs) <= 5:
@@ -625,14 +698,13 @@ def main_app(bq_client):
                 search_conditions.append(f"**年度**: {', '.join(year_strs[:5])}... (計{len(year_strs)}件)")
         
         # 会議体
-        councils = st.session_state.get('selected_councils', [])
         if councils:
             if len(councils) <= 3:
                 search_conditions.append(f"**会議体**: {', '.join(councils)}")
             else:
                 search_conditions.append(f"**会議体**: {', '.join(councils[:3])}... (計{len(councils)}件)")
         
-        if search_conditions:
+        if len(search_conditions) > 1:
             st.info(" | ".join(search_conditions))
         else:
             st.info("**条件**: すべての資料")
@@ -641,11 +713,12 @@ def main_app(bq_client):
     
     tabs = st.tabs(["予算", "会議資料", "🔰使用方法・収録データ情報"])
     
-    councils = st.session_state.get('selected_councils', [])
+    # councils は最新のフィルター選択肢を使用 (表示上の分岐のみ)
+    councils_for_display = st.session_state.get('selected_councils', [])
     
     with tabs[0]:
         if st.session_state['search_results'] is not None:
-            if councils and len(councils) > 0:
+            if councils_for_display and len(councils_for_display) > 0:
                 st.info("会議体が選択されているため、予算の検索は実行されません。")
             else:
                 results_df = st.session_state['search_results']["予算"]["df"]
