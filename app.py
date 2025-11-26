@@ -437,8 +437,7 @@ def main_app(bq_client):
     tree_data = load_ministry_tree()
     
     with st.sidebar:
-        st.markdown("**省庁**")
-        st.caption("外局がある場合、管轄省庁を選択すると全て選択されます")
+        st.markdown("**省庁**", help="外局がある場合、管轄省庁を選択すると全て選択されます")
         if tree_data:
             tree_result = st_ant_tree(
                 treeData=tree_data,
@@ -460,8 +459,7 @@ def main_app(bq_client):
     
     # カテゴリをツリー形式に変更
     with st.sidebar:
-        st.markdown("**カテゴリ**")
-        st.caption("資料の大分類を選択できます")
+        st.markdown("**カテゴリ**", help="資料の大分類を選択できます")
         if filter_choices['category']:
             category_result = st_ant_tree(
                 treeData=filter_choices['category'],
@@ -481,8 +479,7 @@ def main_app(bq_client):
     
     # 資料形式をツリー形式に変更
     with st.sidebar:
-        st.markdown("**資料形式**")
-        st.caption("資料の詳細な形式を選択できます")
+        st.markdown("**資料形式**", help="資料の詳細な形式を選択できます")
         if filter_choices['sub_category']:
             sub_category_result = st_ant_tree(
                 treeData=filter_choices['sub_category'],
@@ -502,8 +499,7 @@ def main_app(bq_client):
     
     # 年度をツリー形式に変更(フラットリストとして表示)
     with st.sidebar:
-        st.markdown("**年度**")
-        st.caption("対象年度を選択できます(複数選択可)")
+        st.markdown("**年度**", help="対象年度を選択できます(複数選択可)")
         if filter_choices['year']:
             year_result = st_ant_tree(
                 treeData=filter_choices['year'],
@@ -524,8 +520,7 @@ def main_app(bq_client):
     council_tree_data = load_council_list(bq_client)
     
     with st.sidebar:
-        st.markdown("**会議体(会議資料のみ)**")
-        st.caption("テキストを入力すると会議体名自体を絞り込み検索できます")
+        st.markdown("**会議体(会議資料のみ)**", help="テキストを入力すると会議体名自体を絞り込み検索できます")
         if council_tree_data:
             council_result = st_ant_tree(
                 treeData=council_tree_data,
@@ -614,6 +609,61 @@ def main_app(bq_client):
                 }
             
             st.session_state['search_results'] = all_results
+    
+    # 検索条件の表示
+    if st.session_state['search_results'] is not None:
+        st.subheader("📋 適用中の検索条件")
+        
+        search_conditions = []
+        
+        # キーワード
+        if keyword:
+            search_conditions.append(f"**キーワード**: {keyword}")
+        
+        # 省庁
+        agencies = st.session_state.get('selected_agencies', [])
+        if agencies:
+            if len(agencies) <= 3:
+                search_conditions.append(f"**省庁**: {', '.join(agencies)}")
+            else:
+                search_conditions.append(f"**省庁**: {', '.join(agencies[:3])}... (計{len(agencies)}件)")
+        
+        # カテゴリ
+        categories = st.session_state.get('selected_categories', [])
+        if categories:
+            search_conditions.append(f"**カテゴリ**: {', '.join(categories)}")
+        
+        # 資料形式
+        sub_categories = st.session_state.get('selected_sub_categories', [])
+        if sub_categories:
+            if len(sub_categories) <= 3:
+                search_conditions.append(f"**資料形式**: {', '.join(sub_categories)}")
+            else:
+                search_conditions.append(f"**資料形式**: {', '.join(sub_categories[:3])}... (計{len(sub_categories)}件)")
+        
+        # 年度
+        years = st.session_state.get('selected_years', [])
+        if years:
+            year_strs = [str(y) for y in sorted(years, reverse=True)]
+            if len(year_strs) <= 5:
+                search_conditions.append(f"**年度**: {', '.join(year_strs)}")
+            else:
+                search_conditions.append(f"**年度**: {', '.join(year_strs[:5])}... (計{len(year_strs)}件)")
+        
+        # 会議体
+        councils = st.session_state.get('selected_councils', [])
+        if councils:
+            if len(councils) <= 3:
+                search_conditions.append(f"**会議体**: {', '.join(councils)}")
+            else:
+                search_conditions.append(f"**会議体**: {', '.join(councils[:3])}... (計{len(councils)}件)")
+        
+        if search_conditions:
+            st.info(" | ".join(search_conditions))
+        else:
+            st.info("**条件**: すべての資料")
+        
+        st.markdown("---")
     
     tabs = st.tabs(["予算", "会議資料", "🔰使用方法・収録データ情報"])
     
