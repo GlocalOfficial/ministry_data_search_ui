@@ -99,6 +99,12 @@ if 'selected_agencies' not in st.session_state:
     st.session_state['selected_agencies'] = []
 if 'selected_councils' not in st.session_state:
     st.session_state['selected_councils'] = []
+if 'selected_categories' not in st.session_state:
+    st.session_state['selected_categories'] = []
+if 'selected_sub_categories' not in st.session_state:
+    st.session_state['selected_sub_categories'] = []
+if 'selected_years' not in st.session_state:
+    st.session_state['selected_years'] = []
 if 'search_results' not in st.session_state:
     st.session_state['search_results'] = None
 
@@ -303,9 +309,9 @@ def load_manual():
     except FileNotFoundError:
         return f"マニュアルファイルが見つかりません: {manual_path}\n\ndocs/manual.md を作成してください。"
 
-def extract_agencies_from_tree_result(tree_result):
+def extract_values_from_tree_result(tree_result):
     """
-    st_ant_treeの結果から選択された本局/外局名のリストを抽出します。
+    st_ant_treeの結果から選択された値のリストを抽出します。
     """
     if not tree_result:
         return []
@@ -432,68 +438,110 @@ def main_app(bq_client):
     
     with st.sidebar:
         st.markdown("**省庁**")
+        st.caption("外局がある場合、管轄省庁を選択すると全て選択されます")
         if tree_data:
             tree_result = st_ant_tree(
                 treeData=tree_data,
                 treeCheckable=True,
                 allowClear=True,
+                showSearch=True,
                 key="agency_tree"
             )
             
-            current_agencies = extract_agencies_from_tree_result(tree_result)
+            current_agencies = extract_values_from_tree_result(tree_result)
             st.session_state['selected_agencies'] = current_agencies
             
             if st.session_state['selected_agencies']:
-                st.caption(f"省庁選択中: {', '.join(st.session_state['selected_agencies'])}")
+                st.caption(f"✓ {len(st.session_state['selected_agencies'])}件選択中")
             else:
-                st.caption("省庁選択なし")
+                st.caption("選択なし")
         else:
             st.error("省庁ツリーの読み込みに失敗しました。")
     
-    category_options = {item['title']: item['value'] for item in filter_choices['category']}
-    selected_category_titles = st.sidebar.multiselect(
-        "**カテゴリ**",
-        options=list(category_options.keys()),
-        help="複数選択可"
-    )
-    categories = [category_options[title] for title in selected_category_titles]
+    # カテゴリをツリー形式に変更
+    with st.sidebar:
+        st.markdown("**カテゴリ**")
+        st.caption("資料の大分類を選択できます")
+        if filter_choices['category']:
+            category_result = st_ant_tree(
+                treeData=filter_choices['category'],
+                treeCheckable=True,
+                allowClear=True,
+                showSearch=True,
+                key="category_tree"
+            )
+            
+            current_categories = extract_values_from_tree_result(category_result)
+            st.session_state['selected_categories'] = current_categories
+            
+            if st.session_state['selected_categories']:
+                st.caption(f"✓ {len(st.session_state['selected_categories'])}件選択中")
+            else:
+                st.caption("選択なし")
     
-    sub_category_options = {item['title']: item['value'] for item in filter_choices['sub_category']}
-    selected_sub_category_titles = st.sidebar.multiselect(
-        "**資料形式**",
-        options=list(sub_category_options.keys()),
-        help="複数選択可"
-    )
-    sub_categories = [sub_category_options[title] for title in selected_sub_category_titles]
+    # 資料形式をツリー形式に変更
+    with st.sidebar:
+        st.markdown("**資料形式**")
+        st.caption("資料の詳細な形式を選択できます")
+        if filter_choices['sub_category']:
+            sub_category_result = st_ant_tree(
+                treeData=filter_choices['sub_category'],
+                treeCheckable=True,
+                allowClear=True,
+                showSearch=True,
+                key="sub_category_tree"
+            )
+            
+            current_sub_categories = extract_values_from_tree_result(sub_category_result)
+            st.session_state['selected_sub_categories'] = current_sub_categories
+            
+            if st.session_state['selected_sub_categories']:
+                st.caption(f"✓ {len(st.session_state['selected_sub_categories'])}件選択中")
+            else:
+                st.caption("選択なし")
     
-    year_options = {item['title']: item['value'] for item in filter_choices['year']}
-    selected_year_titles = st.sidebar.multiselect(
-        "**年度**",
-        options=list(year_options.keys()),
-        help="複数選択可"
-    )
-    years = [year_options[title] for title in selected_year_titles]
+    # 年度をツリー形式に変更(フラットリストとして表示)
+    with st.sidebar:
+        st.markdown("**年度**")
+        st.caption("対象年度を選択できます(複数選択可)")
+        if filter_choices['year']:
+            year_result = st_ant_tree(
+                treeData=filter_choices['year'],
+                treeCheckable=True,
+                allowClear=True,
+                showSearch=True,
+                key="year_tree"
+            )
+            
+            current_years = extract_values_from_tree_result(year_result)
+            st.session_state['selected_years'] = current_years
+            
+            if st.session_state['selected_years']:
+                st.caption(f"✓ {len(st.session_state['selected_years'])}件選択中")
+            else:
+                st.caption("選択なし")
     
     council_tree_data = load_council_list(bq_client)
     
     with st.sidebar:
-        st.markdown("**会議体（会議資料のみ）**",
-                    help="テキストを入力すると会議体名自体を絞り込み検索できます")
+        st.markdown("**会議体(会議資料のみ)**")
+        st.caption("テキストを入力すると会議体名自体を絞り込み検索できます")
         if council_tree_data:
             council_result = st_ant_tree(
                 treeData=council_tree_data,
                 treeCheckable=True,
                 allowClear=True,
+                showSearch=True,
                 key="council_tree"
             )
             
-            current_councils = extract_agencies_from_tree_result(council_result)
+            current_councils = extract_values_from_tree_result(council_result)
             st.session_state['selected_councils'] = current_councils
             
             if st.session_state['selected_councils']:
-                st.caption(f"会議体選択中: {len(st.session_state['selected_councils'])}件")
+                st.caption(f"✓ {len(st.session_state['selected_councils'])}件選択中")
             else:
-                st.caption("会議体選択なし")
+                st.caption("選択なし")
         else:
             st.info("会議体リストがありません")
     
@@ -506,6 +554,9 @@ def main_app(bq_client):
     if st.sidebar.button("フィルタをリセット", use_container_width=True):
         st.session_state['selected_agencies'] = []
         st.session_state['selected_councils'] = []
+        st.session_state['selected_categories'] = []
+        st.session_state['selected_sub_categories'] = []
+        st.session_state['selected_years'] = []
         st.session_state['search_results'] = None
         st.rerun()
     
@@ -517,6 +568,9 @@ def main_app(bq_client):
         st.session_state['session_id'] = ""
         st.session_state['selected_agencies'] = []
         st.session_state['selected_councils'] = []
+        st.session_state['selected_categories'] = []
+        st.session_state['selected_sub_categories'] = []
+        st.session_state['selected_years'] = []
         st.session_state['search_results'] = None
         st.rerun()
 
@@ -525,6 +579,9 @@ def main_app(bq_client):
     if search_button:
         agencies = st.session_state.get('selected_agencies', [])
         councils = st.session_state.get('selected_councils', [])
+        categories = st.session_state.get('selected_categories', [])
+        sub_categories = st.session_state.get('selected_sub_categories', [])
+        years = st.session_state.get('selected_years', [])
         
         log_search_to_bigquery(
             bq_client, keyword, agencies, councils, categories, 
