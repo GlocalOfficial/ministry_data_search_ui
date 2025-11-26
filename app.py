@@ -444,9 +444,9 @@ def main_app(bq_client):
             st.session_state['selected_agencies'] = current_agencies
             
             if st.session_state['selected_agencies']:
-                st.caption(f"選択中: {', '.join(st.session_state['selected_agencies'])}")
+                st.caption(f"省庁選択中: {', '.join(st.session_state['selected_agencies'])}")
             else:
-                st.caption("選択なし")
+                st.caption("省庁選択なし")
         else:
             st.error("省庁ツリーの読み込みに失敗しました。")
     
@@ -491,9 +491,9 @@ def main_app(bq_client):
             st.session_state['selected_councils'] = current_councils
             
             if st.session_state['selected_councils']:
-                st.caption(f"選択中: {len(st.session_state['selected_councils'])}件")
+                st.caption(f"会議体選択中: {len(st.session_state['selected_councils'])}件")
             else:
-                st.caption("選択なし")
+                st.caption("会議体選択なし")
         else:
             st.info("会議体リストがありません")
     
