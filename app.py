@@ -479,7 +479,7 @@ def main_app(bq_client):
     tree_data = load_ministry_tree()
     
     with st.sidebar:
-        st.markdown("**省庁**", help="外局がある場合、管轄省庁を選択すると全て選択されます")
+        st.markdown("#### 省庁", help="外局がある場合、管轄省庁を選択すると全て選択されます")
         if tree_data:
             tree_result = st_ant_tree(
                 treeData=tree_data,
