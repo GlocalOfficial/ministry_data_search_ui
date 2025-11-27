@@ -496,7 +496,7 @@ def main_app(bq_client):
     
     # カテゴリをツリー形式に変更
     with st.sidebar:
-        st.markdown("###### カテゴリ", help="資料の大分類を選択できます")
+        st.markdown("##### カテゴリ", help="資料の大分類を選択できます")
         if filter_choices['category']:
             category_result = st_ant_tree(
                 treeData=filter_choices['category'],
@@ -511,7 +511,7 @@ def main_app(bq_client):
     
     # 資料形式をツリー形式に変更
     with st.sidebar:
-        st.markdown("**資料形式**", help="資料の詳細な形式を選択できます")
+        st.markdown("##### 資料形式", help="資料の詳細な形式を選択できます")
         if filter_choices['sub_category']:
             sub_category_result = st_ant_tree(
                 treeData=filter_choices['sub_category'],
@@ -527,7 +527,7 @@ def main_app(bq_client):
     
     # 年度をツリー形式に変更(フラットリストとして表示)
     with st.sidebar:
-        st.markdown("**年度**", help="対象年度を選択できます(複数選択可)")
+        st.markdown("##### 年度", help="対象年度を選択できます(複数選択可)")
         if filter_choices['year']:
             year_result = st_ant_tree(
                 treeData=filter_choices['year'],
@@ -543,7 +543,7 @@ def main_app(bq_client):
     council_tree_data = load_council_list(bq_client)
     
     with st.sidebar:
-        st.markdown("**会議体(会議資料のみ)**", help="テキストを入力すると会議体名自体を絞り込み検索できます")
+        st.markdown("##### 会議体(会議資料のみ)", help="テキストを入力すると会議体名自体を絞り込み検索できます")
         if council_tree_data:
             council_result = st_ant_tree(
                 treeData=council_tree_data,
