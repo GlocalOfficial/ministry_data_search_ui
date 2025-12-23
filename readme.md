@@ -1,6 +1,7 @@
-# 省庁資料検索ツール (β版_v2)
+# 省庁資料検索ツール (β版_v2) aaa
 
 省庁が公開する予算資料・会議資料を横断的に検索できるStreamlitアプリケーションです。
+
 現行のアプリURL：https://ministry-data-search.streamlit.app/
 
 ## 概要
@@ -77,16 +78,18 @@ pip install -r requirements.txt
 **config_dataset内:**
 - `auth_table`: 認証情報テーブル
     - テーブルの構成は下記の通り
+    - ※is_adminは現在使用していないが、今後UI上でユーザ改廃ができるようにする機能などを追加する想定で作成
 
 |フィールド名|データ型|内容・説明|
 |:----|:----|:----|
 |id|STRING|ユーザーID|
 |pw|STRING|ユーザーパスワード（ランダム生成）|
-|is_alive|BOOLEAN|アカウント死活状況（trueでログイン可能）|
+|is_alive|BOOLEAN|アカウント利用可能状況（trueでログイン可能）|
 |create_dt|TIMESTAMP|アカウント作成日時|
 |update_dt|TIMESTAMP|アカウント情報変更日時（デフォルトはcreate_dtと同一）|
-|is_admin|BOOLEAN|管理者フラグ（現在使用していない）|
+|is_admin|BOOLEAN|管理者フラグ|
 |code|STRING|コード（同一の法人などをまとめて管理する場合に使用）|
+
 
 
 - `log_login_table`: ログイン履歴
@@ -104,12 +107,13 @@ pip install -r requirements.txt
 
 - `log_search_table`: 検索履歴
     - テーブルの構成は下記の通り
+    - ※keywordは過去使用していたが現在使用していないので、新規にテーブルを作る際は作成不要
 
 |フィールド名|データ型|内容・説明|
 |:----|:----|:----|
 |timestamp|TIMESTAMP|検索実行時のタイムスタンプ|
 |sessionId|STRING|セッションID（ログイン時に擬似的にidとタイムスタンプから生成）|
-|keyword|STRING|検索キーワード（現在使用していない）|
+|keyword|STRING|検索キーワード|
 |filter_ministries|STRING|検索条件として指定した省庁|
 |filter_category|STRING|検索条件として指定した資料カテゴリ|
 |filter_subcategory|STRING|検索条件として指定した資料形式カテゴリ|
@@ -231,8 +235,7 @@ Update `project_id-config_dataset_name.auth_table`
 │   └── year.json
 ├── docs/
 │   └── manual.md              # 使用方法マニュアル
-└── .streamlit/
-    └── secrets.toml           # 認証情報（Git管理外）
+└── readme.md                  # プロジェクトの説明（本ファイル）
 ```
 
 ## データ収録範囲
