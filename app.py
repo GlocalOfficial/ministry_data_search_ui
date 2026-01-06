@@ -190,7 +190,7 @@ def show_login_form(bq_client):
     """
     ログインフォームを表示します。
     """
-    st.title("省庁資料検索ツール (β版_v2) - ログインa")
+    st.title("省庁資料検索ツール (β版_v2) - ログイン")
     
     with st.form("login_form"):
         user_id = st.text_input("ユーザーID")
