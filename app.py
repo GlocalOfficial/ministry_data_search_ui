@@ -11,8 +11,8 @@ from st_ant_tree import st_ant_tree
 # ページ設定
 # ----------------------------------------------------------------------
 st.set_page_config(
-    # page_title="省庁資料検索ツール (β版_v2)",
-    page_title="省庁資料検索ツール (β版_サンプル)",
+    page_title="省庁資料検索ツール (β版_v2)",
+
     layout="wide"
 )
 
@@ -190,7 +190,7 @@ def show_login_form(bq_client):
     """
     ログインフォームを表示します。
     """
-    st.title("省庁資料検索ツール (β版_v2) - ログイン")
+    st.title("省庁資料検索ツール (β版_v2) - ログイン☑️")
     
     with st.form("login_form"):
         user_id = st.text_input("ユーザーID")
